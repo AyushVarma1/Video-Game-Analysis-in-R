@@ -1,0 +1,250 @@
+---
+title: "Final Project"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+#Is there a correlation between Sales and Critic Score / Count
+#Can i predict Global sales based on Critic score / count/ year of release    
+
+```{r}
+
+GamesSales <- read.csv("Ayush Varma - Data - Section 1.csv")
+
+
+
+```
+
+
+```{r}
+
+#Some implemented libraries not used - Couldn't get it to work)
+
+library(caret)
+library(caTools)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(ISLR)
+library(klaR)
+library(randomForest)
+library(e1071)
+library(glmnet)
+
+
+#Fill in the missing Critic Scores and Count with the column average.
+GamesSales$Critic_Score[is.na(GamesSales$Critic_Score)] <- mean(GamesSales$Critic_Score, na.rm = TRUE)
+
+GamesSales$Critic_Count[is.na(GamesSales$Critic_Count)] <- mean(GamesSales$Critic_Count, na.rm = TRUE)
+
+
+
+#Round the score to nearest whole number
+GamesSales$Critic_Count = as.numeric(format(round(GamesSales$Critic_Count, 0)))
+GamesSales$Critic_Score = as.numeric(format(round(GamesSales$Critic_Score, 0)))
+
+
+#Create a Subset of the Data with Values to analyze
+#Rows Saved: Year of Release, Publisher, Global Sales(millions), Critic Count and Critic Score
+GamesSalesSubset <- GamesSales[, c(3, 5, 10, 11, 12)]
+
+
+
+#Convert Data to Numeric Value
+GamesSales$Year_of_Release <- as.numeric(as.character(GamesSales$Year_of_Release))
+
+
+#Change NA values to mean of column
+GamesSales$Year_of_Release[is.na(GamesSales$Year_of_Release)] <- mean(GamesSales$Year_of_Release, na.rm = TRUE)
+
+print(GamesSalesSubset)
+
+
+
+#Create the Testing and Training DataSets
+split = sample.split(GamesSalesSubset$Critic_Score, SplitRatio = 0.8)
+
+train = subset(GamesSalesSubset, split == TRUE)
+test = subset(GamesSalesSubset, split == FALSE)
+
+train
+test
+
+
+```
+
+```{r}
+
+summary(GamesSales)
+summary(GamesSalesSubset)
+summary(train)
+
+
+histogram <- hist(GamesSalesSubset$Critic_Score, 
+                  col = "Cyan",
+                  main = "Histogram of Critic Scores",
+                  xlab = "Critic Scores",
+                  ylab = "Frequency",
+                  xlim = c(20, 90),
+                  ylim = c(0, 10000),
+                  las = 3)
+
+
+histogram2 <- hist(GamesSalesSubset$Critic_Count, 
+                  col = "Green",
+                  main = "Histogram of Critic Count",
+                  xlab = "Critic Count",
+                  ylab = "Frequency",
+                  xlim = c(20, 90),
+                  ylim = c(0, 10000),
+                  las = 3)
+
+
+#Create Subset for top 500 games sold
+top500 <- GamesSales[c(1:500), ]
+
+#Box Plots for top 500 Games sold in America
+boxplot(top500$NA_Sales~ top500$Year_of_Release,
+        col = c("purple", "yellow", "darkred", "blue", "gray80", "beige", "pink", "darkgoldenrod1", "chocolate1", "darkseagreen1"), 
+        main = "Top 500 North American Games Sales Box Plots",
+        xlab = "Year of Release",
+        ylab = "North America Sales (millions)", 
+        ylim = c(0, 30),
+        las = 1)
+
+
+
+#Understand the relationship between Critic Count and Score
+
+gg_line <- ggplot(train, aes(x = Critic_Count, y = Critic_Score)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", lwd = 1, col = "red") + 
+  ggtitle("Critic Count and Critic Score") + 
+  xlab("Critic Count") + 
+  ylab("Critic Score") + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size = 40)) +
+  scale_x_sqrt()
+
+print(gg_line)
+
+
+#Create a correlation Matrix
+#Use GamesSalesSubset2 because only numeric Values can be used
+
+correlation_matrix <- cor(GamesSalesSubset2)
+correlation_matrix
+
+```
+
+
+```{r}
+#Regression and random forest as they are both used for predicting and understanding correlations between different variables.
+
+#Complete a Linear Model with Year of Release, Global Sales, and Critic Score (Same subset, just isolating numeric values)
+subsetGamesSales <- GamesSales[, c("Critic_Count", "Global_Sales", "Critic_Score")]
+options(scipen = 999)
+model <- lm(Global_Sales ~  Critic_Count + Critic_Score, data = subsetGamesSales)
+print(model)
+
+
+confint(model, conf.level=0.95)
+
+plot(model)
+plot(subsetGamesSales$Global_Sales ~ subsetGamesSales$Critic_Count + subsetGamesSales$Critic_Score, data = subsetGamesSales, main = "Scatter Plot w/ Line", xlab = "Critic Count and Score", ylab = "Global Sales" )
+abline(model, col = "blue")
+
+summary(model)
+
+cor.test(GamesSalesSubset$Critic_Count, GamesSalesSubset$Global_Sales)
+cor.test(GamesSalesSubset$Global_Sales, GamesSalesSubset$Critic_Score)
+cor.test(GamesSalesSubset$Critic_Count, GamesSalesSubset$Critic_Score)
+
+
+
+class(GamesSalesSubset$Critic_Count)
+
+
+
+predictedvals <- predict(model)
+
+
+realvals <- GamesSalesSubset$Global_Sales
+
+#RMSE does not work - non numeric arguement (commmented out)
+#RMSE <- sqrt(mean((realvals ~ predictedvals)^2))
+
+
+#Lasso and Ridge model
+
+
+ #Create Subset that only has the numeric Values (Publisher and Year of Release proved to be unnecessary)
+GamesSalesSubset2 <- GamesSales[, c(10,11, 12)]
+
+
+model_lasso <- cv.glmnet(x = as.matrix(GamesSalesSubset2), y = GamesSalesSubset2$Global_Sales, alpha = 1)
+print(model_lasso)
+
+
+#Tuning the Lasso Model + Remodeling
+bestlasso <- model_lasso$lambda.min
+model_lasso <- glmnet(x = as.matrix(GamesSalesSubset2), y = GamesSalesSubset2$Global_Sales, alpha = 1, lambda = bestlasso)
+print(model_lasso)
+
+
+#Ridge Regression
+model_ridge <- cv.glmnet(x = as.matrix(GamesSalesSubset2), y = GamesSalesSubset2$Global_Sales, alpha = 0)
+print(model_ridge)
+
+#Ridge Tuning + remodeling
+bestridge <- model_ridge$lambda.min
+modelridge <- glmnet(x = as.matrix(GamesSalesSubset2), y = GamesSalesSubset2$Global_Sales, alpha = 0, lambda = bestridge)
+print(model_ridge)
+
+
+#Random Forest Model
+set.seed(123)
+#Convert to factor to allow model to work
+train$Global_Sales = as.factor(train$Global_Sales)
+
+
+#Number of Trees tested. 500, 750, 1000, none have considerable effect.
+randFor <- randomForest(formula = train$Global_Sales~., ntree =750, mtry =2, data = train)
+
+#Below Call will take a minute to load*****
+randFor
+
+predict(randFor)
+#Check for Forest Models Accuracy: 94% Out of Bag error Rate
+
+
+
+#Cross validation: Does Not Work
+top50 <- train[c(1:50), ]
+top50Global <- head(train$Global_Sales, 50)
+
+#Cross Validation below does NOT work - commented out
+#cross <- train(x = top50, y = top50Global, method = "rf", metric = "Accuracy", trControl = trainControl(method = "cv", number = 5))
+#dim(train)
+#length(train$Global_Sales)
+```
+
+```{r}
+#DOES NOT WORK - Remove if unable to fix**
+
+#conftable <- table(randFor, train$Global_Sales)
+#conftable
+
+#confmax <- confusionMatrix(data = train$Global_Sales, reference = train$Global_Sales)
+
+#Predict using the Random Forest model
+#confusionMatrix(predict(randFor, test), test$Global_Sales)
+#print(levels(randFor))
+```
+
+
+
